@@ -22,6 +22,19 @@ def get_projection_matrix(
     znear: float,
     zfar: float,
 ):
+    """
+    Perspective Matrix. Note that this matrix is specified for colum vector, i.e. m @ x
+    https://github.com/graphdeco-inria/gaussian-splatting/issues/826
+    Unlike the projection matrix used in OpenGL, this matrix project z to [0, 1] instead of [-1, 1] and has different sign in z axis
+    https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix.html
+    [
+        [2*n/(r-l),         0, (r+l)/(r-l),          0],
+        [        0, 2*n/(t-b), (t+b)/(t-b),          0],
+        [        0,         0, (f+n)/(f-n), -f*n/(f-n)],
+        [        0,         0,           1 ,         0],
+    ]
+    """
+
     # calculate top-bottom, left-right cliping plane
     right = (w * 0.5) * (znear / fx)
     left = -right
