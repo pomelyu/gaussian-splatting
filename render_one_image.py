@@ -1,10 +1,12 @@
 import argparse
+import math
 from argparse import Namespace
 from pathlib import Path
 
-import numpy as np
 import torch
 import torchvision
+from diff_gaussian_rasterization import (GaussianRasterizationSettings,
+                                         GaussianRasterizer)
 
 from gaussian_renderer import GaussianModel, render
 from scene.dataset_readers import SceneInfo, sceneLoadTypeCallbacks
@@ -53,18 +55,47 @@ def main():
     print(len(train_cameras))
     camera = train_cameras[args.frame]
 
-    # TODO: breakdown rendering
-    pipeline_params = Namespace(
-        convert_SHs_python=False,
-        compute_cov3D_python=False,
-        debug=False,
-        antialiasing=False,
-    )
-    rendering = render(camera, gaussians, pipeline_params, background, use_trained_exp=False, separate_sh=False)["render"]
-    gt = camera.original_image[0:3, :, :]
-    print(rendering.shape, gt.shape)
+    # pipeline_params = Namespace(
+    #     convert_SHs_python=False,     # TODO: meaning?
+    #     compute_cov3D_python=False,   # TODO: meaning?
+    #     debug=False,
+    #     antialiasing=False,
+    # )
+    # rendering = render(camera, gaussians, pipeline_params, background, use_trained_exp=False, separate_sh=False)["render"]
 
-    vis = torch.cat([gt, rendering], 2)
+    raster_settings = GaussianRasterizationSettings(
+        image_height=int(camera.image_height),
+        image_width=int(camera.image_width),
+        tanfovx=math.tan(camera.FoVx * 0.5),
+        tanfovy=math.tan(camera.FoVy * 0.5),
+        bg=background,
+        scale_modifier=1.0,
+        viewmatrix=camera.world_view_transform,
+        projmatrix=camera.full_proj_transform,
+        sh_degree=gaussians.active_sh_degree,
+        campos=camera.camera_center,
+        prefiltered=False,
+        debug=False,
+        antialiasing=False
+    )
+    rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+
+    rendered_image, radii, depth_image = rasterizer(
+        means3D=gaussians.get_xyz,
+        means2D=None,
+        shs=gaussians.get_features,
+        colors_precomp=None,
+        opacities=gaussians.get_opacity,
+        scales=gaussians.get_scaling,
+        rotations=gaussians.get_rotation,
+        cov3D_precomp=None,
+    )
+    rendered_image = rendered_image.clamp(0, 1)
+
+    gt = camera.original_image[0:3, :, :]
+    print(rendered_image.shape, gt.shape)
+
+    vis = torch.cat([gt, rendered_image], 2)
     torchvision.utils.save_image(vis, out_dir / f"out_{args.frame}.jpg")
 
 
